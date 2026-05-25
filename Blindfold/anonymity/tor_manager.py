@@ -95,7 +95,7 @@ class TorManager:
             # Create a v3 hidden service that points to our local server port
             response = self.controller.create_ephemeral_hidden_service(
                 {80: target_port}, 
-                await_publication=True,
+                await_publication=False,
                 key_type="NEW", 
                 key_content="ED25519-V3"
             )
