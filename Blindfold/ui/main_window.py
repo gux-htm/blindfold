@@ -28,6 +28,15 @@ class TorSetupThread(QThread):
             downloader.progress.connect(self.download_progress.emit)
             downloader.log.connect(self.download_log.emit)
             
+            # Capture error messages
+            def on_downloader_finished(success, msg):
+                if not success:
+                    import logging
+                    logging.getLogger(__name__).error(f"Downloader failed: {msg}")
+                    self.download_log.emit(f"Download Error: {msg}")
+
+            downloader.finished.connect(on_downloader_finished)
+            
             # Run synchronously inside this background thread
             downloader.run()
             

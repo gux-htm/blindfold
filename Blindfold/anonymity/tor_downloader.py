@@ -30,7 +30,7 @@ class TorDownloaderThread(QThread):
             
             self.log.emit(f"Found latest version: {latest_version}")
             
-            url = f"https://dist.torproject.org/torbrowser/{latest_version}/tor-expert-bundle-{latest_version}-windows-x86_64.tar.gz"
+            url = f"https://dist.torproject.org/torbrowser/{latest_version}/tor-expert-bundle-windows-x86_64-{latest_version}.tar.gz"
             self.log.emit(f"Downloading Tor v{latest_version}...")
             
             self.bin_dir.mkdir(parents=True, exist_ok=True)
