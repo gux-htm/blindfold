@@ -1,0 +1,9 @@
+PySide6
+PyNaCl
+cryptography
+pycryptodome
+stem
+i2plib
+cbor2
+zxcvbn
+argon2-cffi
