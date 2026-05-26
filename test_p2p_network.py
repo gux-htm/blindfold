@@ -123,9 +123,11 @@ def main():
             
     print_log("[+] Connected to Tor SOCKS/Control network successfully!")
     print_log("RegisteringEphemeral Hidden Service (virtual port 80 -> local port 8080)...")
-    onion = tor.create_ephemeral_hidden_service(8080)
-    if not onion:
+    res = tor.create_ephemeral_hidden_service(8080)
+    if not res:
         print_log("[FATAL] Ephemeral Hidden Service registration failed. Exiting.")
+        return
+    onion, _ = res
     from core.identity import generate_invite_code, parse_invite_code
     invite_code = generate_invite_code(onion, vk_bytes.hex())
     print(f"[+] My Test Invite Code: {invite_code}")

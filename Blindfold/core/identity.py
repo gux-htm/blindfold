@@ -120,6 +120,9 @@ def parse_invite_code(invite_code: str) -> tuple[str, str]:
     onion = payload["onion"]
     pubkey = payload["pubkey"]
     
+    if isinstance(onion, list):
+        onion = onion[0]
+        
     if not onion.endswith(".onion") or len(pubkey) != 64:
         raise ValueError("Invalid credentials inside invite code")
         
