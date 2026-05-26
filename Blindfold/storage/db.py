@@ -1,6 +1,7 @@
 import sqlite3
 import json
 import os
+import threading
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 from cryptography.hazmat.primitives.ciphers.aead import ChaCha20Poly1305
@@ -29,20 +30,22 @@ class EncryptedDatabase:
         self.conn = sqlite3.connect(self.db_path, check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
         self.chacha = ChaCha20Poly1305(self.key)
+        self.lock = threading.Lock()
         self._init_db()
 
     def _init_db(self):
         # Store everything as encrypted blobs to hide schema metadata
-        with self.conn:
-            self.conn.execute("""
-                CREATE TABLE IF NOT EXISTS secure_store (
-                    collection TEXT,
-                    key_id TEXT,
-                    nonce BLOB,
-                    ciphertext BLOB,
-                    PRIMARY KEY (collection, key_id)
-                )
-            """)
+        with self.lock:
+            with self.conn:
+                self.conn.execute("""
+                    CREATE TABLE IF NOT EXISTS secure_store (
+                        collection TEXT,
+                        key_id TEXT,
+                        nonce BLOB,
+                        ciphertext BLOB,
+                        PRIMARY KEY (collection, key_id)
+                    )
+                """)
 
     def _encrypt_payload(self, payload: dict) -> tuple[bytes, bytes]:
         nonce = os.urandom(12)
@@ -56,18 +59,20 @@ class EncryptedDatabase:
 
     def put(self, collection: str, key_id: str, data: dict):
         nonce, ciphertext = self._encrypt_payload(data)
-        with self.conn:
-            self.conn.execute("""
-                INSERT INTO secure_store (collection, key_id, nonce, ciphertext)
-                VALUES (?, ?, ?, ?)
-                ON CONFLICT(collection, key_id) DO UPDATE SET
-                nonce=excluded.nonce,
-                ciphertext=excluded.ciphertext
-            """, (collection, key_id, nonce, ciphertext))
+        with self.lock:
+            with self.conn:
+                self.conn.execute("""
+                    INSERT INTO secure_store (collection, key_id, nonce, ciphertext)
+                    VALUES (?, ?, ?, ?)
+                    ON CONFLICT(collection, key_id) DO UPDATE SET
+                    nonce=excluded.nonce,
+                    ciphertext=excluded.ciphertext
+                """, (collection, key_id, nonce, ciphertext))
 
     def get(self, collection: str, key_id: str) -> Optional[dict]:
-        cur = self.conn.execute("SELECT nonce, ciphertext FROM secure_store WHERE collection=? AND key_id=?", (collection, key_id))
-        row = cur.fetchone()
+        with self.lock:
+            cur = self.conn.execute("SELECT nonce, ciphertext FROM secure_store WHERE collection=? AND key_id=?", (collection, key_id))
+            row = cur.fetchone()
         if not row:
             return None
         try:
@@ -76,13 +81,16 @@ class EncryptedDatabase:
             return None
 
     def delete(self, collection: str, key_id: str):
-        with self.conn:
-            self.conn.execute("DELETE FROM secure_store WHERE collection=? AND key_id=?", (collection, key_id))
+        with self.lock:
+            with self.conn:
+                self.conn.execute("DELETE FROM secure_store WHERE collection=? AND key_id=?", (collection, key_id))
             
     def get_all(self, collection: str) -> Dict[str, dict]:
-        cur = self.conn.execute("SELECT key_id, nonce, ciphertext FROM secure_store WHERE collection=?", (collection,))
+        with self.lock:
+            cur = self.conn.execute("SELECT key_id, nonce, ciphertext FROM secure_store WHERE collection=?", (collection,))
+            rows = cur.fetchall()
         results = {}
-        for row in cur:
+        for row in rows:
             try:
                 results[row['key_id']] = self._decrypt_payload(row['nonce'], row['ciphertext'])
             except Exception:
@@ -90,4 +98,5 @@ class EncryptedDatabase:
         return results
 
     def close(self):
-        self.conn.close()
+        with self.lock:
+            self.conn.close()

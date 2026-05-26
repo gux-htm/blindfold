@@ -178,8 +178,17 @@ class MainDashboard(QWidget):
             db=self.db,
             session_mgr=self.session_mgr
         )
+        
+        def handle_finished(success, err_msg):
+            if client in self.active_clients:
+                self.active_clients.remove(client)
+            if not success:
+                import logging
+                logging.getLogger(__name__).error(f"Message delivery failed: {err_msg}")
+                QMessageBox.warning(self, "Message Delivery Failed", f"Failed to deliver message to {onion_address}.\nReason: {err_msg}\n\nNote: If the peer recently opened their app, Tor may take 1-2 minutes to publish their onion address.")
+
         self.active_clients.append(client)
-        client.finished.connect(lambda success, msg, c=client: self.active_clients.remove(c) if c in self.active_clients else None)
+        client.finished.connect(handle_finished)
         client.start()
 
     def on_message_received(self, sender_onion: str, text: str):
