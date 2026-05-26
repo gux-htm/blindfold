@@ -11,6 +11,9 @@ from files.encryptor import FileEncryptor
 from files.shredder import SecureShredder
 from anonymity.tor_manager import TorManager
 from anonymity.tor_downloader import TorDownloaderThread
+from core.session_manager import SessionManager
+from network.server import ChatServerThread
+from network.client import ChatClientThread
 
 class TorSetupThread(QThread):
     finished = Signal(str)
@@ -66,6 +69,13 @@ class MainDashboard(QWidget):
         self.kms = VaultKMS(self.master_key, self.db)
         self.encryptor = FileEncryptor(self.master_key) 
         self.shredder = SecureShredder()
+        self.session_mgr = SessionManager(self.master_key, self.db)
+        self.active_clients = []
+        
+        # Start Chat Server in the background listening on port 8080 (where Tor Hidden Service redirects)
+        self.server_thread = ChatServerThread(self.db, self.session_mgr, host="127.0.0.1", port=8080)
+        self.server_thread.message_received.connect(self.on_message_received)
+        self.server_thread.start()
         
         # Initialize Tor asynchronously
         self.tor_thread = TorSetupThread()
@@ -89,6 +99,7 @@ class MainDashboard(QWidget):
         self.onion_address = onion_address
         if hasattr(self, 'chat_tab'):
             self.chat_tab.onion_display.setText(onion_address)
+            self.chat_tab.my_onion = onion_address
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
@@ -118,6 +129,7 @@ class MainDashboard(QWidget):
         
         # Chat Tab
         self.chat_tab = ChatTab(self.db, self.onion_address, self.pubkey.hex())
+        self.chat_tab.send_message_signal.connect(self.send_network_message)
         
         # Vault Tab
         self.vault_tab = VaultTab(self.kms, self.encryptor, self.shredder, self.db)
@@ -126,6 +138,31 @@ class MainDashboard(QWidget):
         self.tabs.addTab(self.vault_tab, "File Vault")
         
         layout.addWidget(self.tabs)
+
+    def send_network_message(self, onion_address: str, text: str):
+        """Spawns a client thread in the background to transmit the message through Tor SOCKS."""
+        tor_mgr = TorManager()
+        proxy = tor_mgr.get_socks_proxy()
+        socks_host, socks_port = proxy if proxy else ("127.0.0.1", 9050)
+        
+        client = ChatClientThread(
+            socks_host=socks_host,
+            socks_port=socks_port,
+            my_onion=self.onion_address,
+            my_pubkey_hex=self.pubkey.hex(),
+            target_onion=onion_address,
+            message=text,
+            db=self.db,
+            session_mgr=self.session_mgr
+        )
+        self.active_clients.append(client)
+        client.finished.connect(lambda success, msg, c=client: self.active_clients.remove(c) if c in self.active_clients else None)
+        client.start()
+
+    def on_message_received(self, sender_onion: str, text: str):
+        """Called dynamically by ChatServerThread when a Double Ratchet decrypted message arrives."""
+        if hasattr(self, 'chat_tab'):
+            self.chat_tab.receive_message(sender_onion, text)
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -153,3 +190,11 @@ class MainWindow(QMainWindow):
         self.stacked_widget.addWidget(self.dashboard)
         self.stacked_widget.setCurrentWidget(self.dashboard)
 
+    def closeEvent(self, event):
+        if hasattr(self, 'dashboard'):
+            if hasattr(self.dashboard, 'server_thread'):
+                self.dashboard.server_thread.stop()
+            if hasattr(self.dashboard, 'tor_thread'):
+                self.dashboard.tor_thread.quit()
+                self.dashboard.tor_thread.wait()
+        event.accept()

@@ -172,3 +172,16 @@ def dh_derive_shared_box(my_priv_bytes: bytes, peer_pub_bytes: bytes) -> tuple[_
     shared = dh_exchange(my_priv_bytes, peer_pub_bytes)
     key_material = hkdf_derive(shared, "pairwise_v2")
     return _NaClBox(key_material), key_material
+
+def ed25519_sk_to_x25519(sk_seed: bytes) -> bytes:
+    """Convert Ed25519 private key seed (32 bytes) to X25519 private key bytes (32 bytes)."""
+    from nacl.signing import SigningKey
+    import nacl.bindings
+    sk = SigningKey(sk_seed)
+    return nacl.bindings.crypto_sign_ed25519_sk_to_curve25519(sk._signing_key)
+
+def ed25519_pk_to_x25519(pk_bytes: bytes) -> bytes:
+    """Convert Ed25519 public key (32 bytes) to X25519 public key bytes (32 bytes)."""
+    import nacl.bindings
+    return nacl.bindings.crypto_sign_ed25519_pk_to_curve25519(pk_bytes)
+
