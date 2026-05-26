@@ -5,7 +5,7 @@ import cbor2
 from PySide6.QtCore import QThread, Signal
 from cryptography.hazmat.primitives.ciphers.aead import ChaCha20Poly1305
 
-GLOBAL_MAC_KEY = b"blindfold_global_transport_key_32"
+GLOBAL_MAC_KEY = b"blindfold_global_transport_key32"
 
 logger = logging.getLogger(__name__)
 

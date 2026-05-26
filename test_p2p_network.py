@@ -100,7 +100,7 @@ def main():
             pass
 
     # 2. Instantiate secure sandbox database and session manager
-    test_master_key = b"test_diagnostic_master_key_32_b"
+    test_master_key = b"test_diagnostic_master_key_32_by"
     db = EncryptedDatabase(test_master_key, path=db_path)
     
     sk_bytes, vk_bytes = generate_identity()
