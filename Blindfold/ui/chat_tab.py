@@ -104,6 +104,21 @@ class ChatTab(QWidget):
         right_layout = QVBoxLayout(right_widget)
         right_layout.setContentsMargins(0, 0, 0, 0)
         
+        chat_header = QHBoxLayout()
+        self.chat_title = QLabel("Select a contact to start secure chat...")
+        self.chat_title.setStyleSheet("color: #7D4698; font-family: 'Courier New'; font-size: 14px; font-weight: bold;")
+        self.btn_reset_session = QPushButton("RESET SESSION")
+        self.btn_reset_session.setStyleSheet("""
+            QPushButton { background-color: #1E2128; border: 1px solid #2D3139; color: #E03030; padding: 5px 15px; font-family: 'Courier New'; font-weight: bold; }
+            QPushButton:hover { background-color: #E03030; color: #FFFFFF; }
+        """)
+        self.btn_reset_session.clicked.connect(self.on_reset_session)
+        self.btn_reset_session.hide()
+        chat_header.addWidget(self.chat_title)
+        chat_header.addStretch()
+        chat_header.addWidget(self.btn_reset_session)
+        right_layout.addLayout(chat_header)
+        
         self.chat_history = QTextEdit()
         self.chat_history.setReadOnly(True)
         self.chat_history.setStyleSheet("""
@@ -158,12 +173,17 @@ class ChatTab(QWidget):
                 from core.identity import parse_invite_code
                 onion, pubkey = parse_invite_code(invite_code)
                 self.db.put("contacts", onion, {"name": name, "pubkey": pubkey})
+                self.db.delete("ratchet_states", onion) # clear any existing ratchet state on re-add/update
                 self.refresh_contacts()
             except Exception as e:
                 QMessageBox.warning(self, "Error", f"Invalid Invite Code: {e}")
 
     def on_contact_selected(self, item):
         self.current_contact_onion = item.data(Qt.UserRole)
+        contact = self.db.get("contacts", self.current_contact_onion)
+        name = contact.get("name", "Secure Peer") if contact else "Secure Peer"
+        self.chat_title.setText(f"SECURE CHAT WITH: {name}")
+        self.btn_reset_session.show()
         self.refresh_chat_history()
         
     def refresh_chat_history(self):
@@ -218,6 +238,9 @@ class ChatTab(QWidget):
         }
         self.db.put(f"msgs_{onion_address}", msg_id, msg_data)
         
+        # Always refresh contact list in case a new TOFU contact was created
+        self.refresh_contacts()
+        
         if self.current_contact_onion == onion_address:
             self.refresh_chat_history()
 
@@ -237,3 +260,15 @@ class ChatTab(QWidget):
             code = generate_invite_code(onion_address, self.my_pubkey_hex)
             self.invite_display.setText(code)
 
+    def on_reset_session(self):
+        if not self.current_contact_onion:
+            return
+        reply = QMessageBox.question(
+            self, "Reset Secure Session",
+            "Are you sure you want to reset the Double Ratchet cryptographic session for this contact?\n\nThis will clear any desynchronized ratchet states.",
+            QMessageBox.Yes | QMessageBox.No
+        )
+        if reply == QMessageBox.Yes:
+            self.db.delete("ratchet_states", self.current_contact_onion)
+            QMessageBox.information(self, "Success", "Cryptographic session state reset. A fresh handshake will bootstrap on the next message exchange.")
+            self.chat_history.append("<br><span style='color: #E03030;'><b>[SYSTEM] Secure session reset. A fresh handshake will bootstrap on the next message.</b></span>")

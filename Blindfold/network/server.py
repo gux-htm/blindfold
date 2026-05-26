@@ -129,6 +129,11 @@ class ChatServerThread(QThread):
                     
                 except Exception as e:
                     logger.error(f"Error handling incoming message connection: {e}")
+                    try:
+                        if 'sender_onion' in locals() and sender_onion:
+                            self.message_received.emit(sender_onion, "[DECRYPTION FAILED: Cryptographic keys are out of sync. Please click 'RESET SESSION' on your side to restore synchronization.]")
+                    except Exception:
+                        pass
                 finally:
                     try:
                         sock.close()
