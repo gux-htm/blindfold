@@ -56,6 +56,9 @@ def bg_server_loop(db, session_mgr):
             pn = header.get("pn")
             n = header.get("n")
             
+            if isinstance(sender_onion, list):
+                sender_onion = sender_onion[0]
+            
             print_log(f"[Server] Unpacked frame from {sender_onion}. Restoring session...")
             
             # Ensure contact exists in database

@@ -92,6 +92,9 @@ class ChatServerThread(QThread):
                     pn = header.get("pn")
                     n = header.get("n")
                     
+                    if isinstance(sender_onion, list):
+                        sender_onion = sender_onion[0]
+                        
                     if not sender_onion or not sender_pubkey:
                         raise Exception("Missing sender identity in frame header")
                         
