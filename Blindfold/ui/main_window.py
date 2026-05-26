@@ -87,19 +87,18 @@ class MainDashboard(QWidget):
     def on_tor_log(self, msg: str):
         self.onion_address = msg
         if hasattr(self, 'chat_tab'):
-            self.chat_tab.onion_display.setText(msg)
+            self.chat_tab.invite_display.setText(msg)
 
     def on_tor_progress(self, percent: int):
         msg = f"Downloading Tor... {percent}%"
         self.onion_address = msg
         if hasattr(self, 'chat_tab'):
-            self.chat_tab.onion_display.setText(msg)
+            self.chat_tab.invite_display.setText(msg)
 
     def on_tor_ready(self, onion_address):
         self.onion_address = onion_address
         if hasattr(self, 'chat_tab'):
-            self.chat_tab.onion_display.setText(onion_address)
-            self.chat_tab.my_onion = onion_address
+            self.chat_tab.update_my_identity(onion_address)
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)

@@ -19,12 +19,11 @@ class AddContactDialog(QDialog):
         
         layout = QFormLayout(self)
         self.name_input = QLineEdit()
-        self.onion_input = QLineEdit()
-        self.pubkey_input = QLineEdit()
+        self.invite_input = QLineEdit()
+        self.invite_input.setPlaceholderText("blindfold://...")
         
         layout.addRow("Contact Name:", self.name_input)
-        layout.addRow("Onion Address:", self.onion_input)
-        layout.addRow("Public Key (Hex):", self.pubkey_input)
+        layout.addRow("Invite Code:", self.invite_input)
         
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         buttons.accepted.connect(self.accept)
@@ -32,7 +31,7 @@ class AddContactDialog(QDialog):
         layout.addRow(buttons)
         
     def get_data(self):
-        return self.name_input.text(), self.onion_input.text(), self.pubkey_input.text()
+        return self.name_input.text().strip(), self.invite_input.text().strip()
 
 class ChatTab(QWidget):
     send_message_signal = Signal(str, str) # onion_address, message
@@ -46,6 +45,7 @@ class ChatTab(QWidget):
         
         self._setup_ui()
         self.refresh_contacts()
+        self.update_my_identity(my_onion)
 
     def _setup_ui(self):
         main_layout = QVBoxLayout(self)
@@ -53,22 +53,24 @@ class ChatTab(QWidget):
         
         # --- Top Identity Bar ---
         top_bar = QHBoxLayout()
-        identity_label = QLabel("My Identity:")
+        identity_label = QLabel("My Invite Code:")
         identity_label.setStyleSheet("color: #7D4698; font-weight: bold; font-family: 'Courier New'; font-size: 14px;")
         
-        self.onion_display = QLineEdit(self.my_onion)
-        self.onion_display.setReadOnly(True)
-        self.onion_display.setStyleSheet("background: #0A0A0C; border: 1px solid #2D3139; color: #A0A5B5; font-family: 'Courier New';")
+        self.invite_display = QLineEdit()
+        self.invite_display.setReadOnly(True)
+        self.invite_display.setStyleSheet("background: #0A0A0C; border: 1px solid #2D3139; color: #A0A5B5; font-family: 'Courier New';")
+        self.invite_display.setText("Waiting for Tor address to generate code...")
         
-        self.pubkey_display = QLineEdit(self.my_pubkey_hex)
-        self.pubkey_display.setReadOnly(True)
-        self.pubkey_display.setStyleSheet("background: #0A0A0C; border: 1px solid #2D3139; color: #A0A5B5; font-family: 'Courier New';")
+        self.btn_copy_invite = QPushButton("COPY CODE")
+        self.btn_copy_invite.setStyleSheet("""
+            QPushButton { background-color: #1E2128; border: 1px solid #2D3139; color: #7D4698; padding: 5px 15px; font-family: 'Courier New'; font-weight: bold; }
+            QPushButton:hover { background-color: #2D3139; color: #FFFFFF; }
+        """)
+        self.btn_copy_invite.clicked.connect(self.copy_invite_code)
         
         top_bar.addWidget(identity_label)
-        top_bar.addWidget(QLabel(" Onion:"))
-        top_bar.addWidget(self.onion_display)
-        top_bar.addWidget(QLabel(" PubKey:"))
-        top_bar.addWidget(self.pubkey_display)
+        top_bar.addWidget(self.invite_display)
+        top_bar.addWidget(self.btn_copy_invite)
         main_layout.addLayout(top_bar)
         
         # --- Splitter (Contacts Left, Chat Right) ---
@@ -147,17 +149,18 @@ class ChatTab(QWidget):
     def on_add_contact(self):
         dialog = AddContactDialog(self)
         if dialog.exec():
-            name, onion, pubkey = dialog.get_data()
-            if not name or not onion or not pubkey:
+            name, invite_code = dialog.get_data()
+            if not name or not invite_code:
                 QMessageBox.warning(self, "Error", "All fields are required.")
                 return
             
-            if not onion.endswith(".onion"):
-                QMessageBox.warning(self, "Error", "Invalid Onion address.")
-                return
-                
-            self.db.put("contacts", onion, {"name": name, "pubkey": pubkey})
-            self.refresh_contacts()
+            try:
+                from core.identity import parse_invite_code
+                onion, pubkey = parse_invite_code(invite_code)
+                self.db.put("contacts", onion, {"name": name, "pubkey": pubkey})
+                self.refresh_contacts()
+            except Exception as e:
+                QMessageBox.warning(self, "Error", f"Invalid Invite Code: {e}")
 
     def on_contact_selected(self, item):
         self.current_contact_onion = item.data(Qt.UserRole)
@@ -217,3 +220,20 @@ class ChatTab(QWidget):
         
         if self.current_contact_onion == onion_address:
             self.refresh_chat_history()
+
+    def copy_invite_code(self):
+        from PySide6.QtGui import QClipboard
+        from PySide6.QtWidgets import QApplication
+        clipboard = QApplication.clipboard()
+        clipboard.setText(self.invite_display.text())
+        self.btn_copy_invite.setText("COPIED!")
+        from PySide6.QtCore import QTimer
+        QTimer.singleShot(1500, lambda: self.btn_copy_invite.setText("COPY CODE"))
+
+    def update_my_identity(self, onion_address):
+        self.my_onion = onion_address
+        if onion_address and not onion_address.startswith("Waiting"):
+            from core.identity import generate_invite_code
+            code = generate_invite_code(onion_address, self.my_pubkey_hex)
+            self.invite_display.setText(code)
+

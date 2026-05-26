@@ -126,11 +126,11 @@ def main():
     onion = tor.create_ephemeral_hidden_service(8080)
     if not onion:
         print_log("[FATAL] Ephemeral Hidden Service registration failed. Exiting.")
-        return
-        
-    print(f"[+] My Test Onion:   {onion}")
+    from core.identity import generate_invite_code, parse_invite_code
+    invite_code = generate_invite_code(onion, vk_bytes.hex())
+    print(f"[+] My Test Invite Code: {invite_code}")
     print("="*70)
-    print("Copy the above 'My Test Onion' and 'My Test PubKey' to give to your partner (Kiro).")
+    print("Copy the above 'My Test Invite Code' to give to your partner (Kiro).")
     print("="*70)
 
     # 4. Fire up background listener
@@ -143,14 +143,13 @@ def main():
 
     # 5. Interactively capture peer credentials
     try:
-        peer_onion = input("\nEnter Peer's Test Onion Address: ").strip()
-        peer_pubkey = input("Enter Peer's Test PubKey (Hex): ").strip()
+        peer_invite = input("\nEnter Peer's Test Invite Code: ").strip()
+        peer_onion, peer_pubkey = parse_invite_code(peer_invite)
     except KeyboardInterrupt:
         running = False
         return
-
-    if not peer_onion.endswith(".onion") or len(peer_pubkey) != 64:
-        print_log("[FATAL] Invalid peer credentials input. Exiting.")
+    except Exception as e:
+        print_log(f"[FATAL] Invalid invite code input: {e}")
         running = False
         return
 

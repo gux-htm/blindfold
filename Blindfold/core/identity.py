@@ -92,3 +92,36 @@ def unlock_or_create_vault(password: str) -> tuple[bytes, bytes]:
     else:
         sk_bytes, vk_bytes = create_identity_vault(path, password)
         return sk_bytes, vk_bytes
+
+def generate_invite_code(onion_address: str, pubkey_hex: str) -> str:
+    """Consolidate onion address and pubkey hex into a single base64 blindfold:// link."""
+    import base64
+    import json
+    payload = {
+        "onion": onion_address,
+        "pubkey": pubkey_hex
+    }
+    json_bytes = json.dumps(payload).encode('utf-8')
+    b64_str = base64.b64encode(json_bytes).decode('utf-8')
+    return f"blindfold://{b64_str}"
+
+def parse_invite_code(invite_code: str) -> tuple[str, str]:
+    """Parse a consolidated blindfold:// invite code into (onion_address, pubkey_hex)."""
+    import base64
+    import json
+    invite_code = invite_code.strip()
+    if not invite_code.startswith("blindfold://"):
+        raise ValueError("Invalid invite code format (must start with blindfold://)")
+    
+    b64_str = invite_code.replace("blindfold://", "")
+    json_bytes = base64.b64decode(b64_str.encode('utf-8'))
+    payload = json.loads(json_bytes.decode('utf-8'))
+    
+    onion = payload["onion"]
+    pubkey = payload["pubkey"]
+    
+    if not onion.endswith(".onion") or len(pubkey) != 64:
+        raise ValueError("Invalid credentials inside invite code")
+        
+    return onion, pubkey
+
