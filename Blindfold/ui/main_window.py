@@ -16,10 +16,15 @@ from network.server import ChatServerThread
 from network.client import ChatClientThread
 
 class TorSetupThread(QThread):
-    finished = Signal(str)
+    finished = Signal(str, str) # onion_address, private_key
     download_progress = Signal(int)
     download_log = Signal(str)
     
+    def __init__(self, key_type: str = "NEW", key_content: str = "ED25519-V3"):
+        super().__init__()
+        self.key_type = key_type
+        self.key_content = key_content
+        
     def run(self):
         tor = TorManager()
         if not tor.connect():
@@ -44,15 +49,16 @@ class TorSetupThread(QThread):
             downloader.run()
             
             if not tor.connect():
-                self.finished.emit("Failed to download or connect to embedded Tor.")
+                self.finished.emit("Failed to download or connect to embedded Tor.", "")
                 return
 
         self.download_log.emit("Creating Tor Hidden Service...")
-        onion = tor.create_ephemeral_hidden_service(8080)
-        if onion:
-            self.finished.emit(onion)
+        res = tor.create_ephemeral_hidden_service(8080, self.key_type, self.key_content)
+        if res:
+            onion, priv_key = res
+            self.finished.emit(onion, priv_key)
         else:
-            self.finished.emit("Failed to create Hidden Service")
+            self.finished.emit("Failed to create Hidden Service", "")
 
 class MainDashboard(QWidget):
     def __init__(self, master_key: bytes, pubkey: bytes):
@@ -77,8 +83,18 @@ class MainDashboard(QWidget):
         self.server_thread.message_received.connect(self.on_message_received)
         self.server_thread.start()
         
+        # Look up persistent Onion hidden service configuration in the database
+        onion_config = self.db.get("config", "onion_service")
+        if onion_config and "private_key" in onion_config:
+            key_type = "ED25519-V3"
+            key_content = onion_config["private_key"]
+            self.onion_address = onion_config.get("onion", "Waiting for Tor...")
+        else:
+            key_type = "NEW"
+            key_content = "ED25519-V3"
+            
         # Initialize Tor asynchronously
-        self.tor_thread = TorSetupThread()
+        self.tor_thread = TorSetupThread(key_type, key_content)
         self.tor_thread.finished.connect(self.on_tor_ready)
         self.tor_thread.download_log.connect(self.on_tor_log)
         self.tor_thread.download_progress.connect(self.on_tor_progress)
@@ -95,8 +111,16 @@ class MainDashboard(QWidget):
         if hasattr(self, 'chat_tab'):
             self.chat_tab.invite_display.setText(msg)
 
-    def on_tor_ready(self, onion_address):
+    def on_tor_ready(self, onion_address, private_key):
         self.onion_address = onion_address
+        
+        # Save persistent key if not already saved
+        if private_key:
+            self.db.put("config", "onion_service", {
+                "onion": onion_address,
+                "private_key": private_key
+            })
+            
         if hasattr(self, 'chat_tab'):
             self.chat_tab.update_my_identity(onion_address)
 

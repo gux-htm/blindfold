@@ -85,8 +85,8 @@ class TorManager:
         logger.error("Could not connect to any Tor instance, and embedded Tor is missing.")
         return False
 
-    def create_ephemeral_hidden_service(self, target_port: int) -> Optional[str]:
-        """Create a v3 ephemeral hidden service pointing to the local target_port."""
+    def create_ephemeral_hidden_service(self, target_port: int, key_type: str = "NEW", key_content: str = "ED25519-V3") -> Optional[tuple[str, str]]:
+        """Create a v3 ephemeral hidden service pointing to the local target_port. Supports loaded keys."""
         if not self.controller:
             if not self.connect():
                 return None
@@ -96,12 +96,12 @@ class TorManager:
             response = self.controller.create_ephemeral_hidden_service(
                 {80: target_port}, 
                 await_publication=False,
-                key_type="NEW", 
-                key_content="ED25519-V3"
+                key_type=key_type, 
+                key_content=key_content
             )
             self.active_onion = f"{response.service_id}.onion"
             logger.info(f"Created ephemeral hidden service: {self.active_onion}")
-            return self.active_onion
+            return self.active_onion, response.private_key
         except Exception as e:
             logger.error(f"Failed to create hidden service: {e}")
             return None
